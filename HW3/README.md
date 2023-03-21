@@ -1,11 +1,12 @@
-# Kaggle：Automatic-Speech-Recognition  
+# Kaggle：Automatic-Speech-Recognition
+
 使用CTC LOSS  
 以Python撰寫  
 > [Training model](main.ipynb)  
 > [Testing](test.ipynb)  
 
-步驟
---
+## 步驟
+
 [0.環境設定](#0環境設定)  
 [1.資料前處理](#1資料前處理)  
 [2.模型建構](#2模型建構)  
@@ -14,22 +15,30 @@
 [5.成果](#5成果)  
 [6.參考資料](#6參考資料)
 
-## 0.環境設定  
-    Anaconda + jupyter notebook(or VScode)
-    Tensorflow-GPU = 2.6  
-    cuDNN = 8.1  
-    CUDA = 11.2  
-    Keras = 2.6  
-    librosa  
-    其他常用lib
+### 0.環境設定
 
-建立環境 pip install -r requirements.txt  
+```text
+Anaconda + jupyter notebook(or VScode)
+Tensorflow-GPU = 2.6  
+cuDNN = 8.1  
+CUDA = 11.2  
+Keras = 2.6  
+librosa  
+其他常用lib
+```
+
+```bash
+#建立環境 
+pip install -r requirements.txt  
+```
+
 [requirements](requirements.txt)  
 
-
-## 1.資料前處理  
+### 1.資料前處理  
   
-### 讀取wav與建立text  
+#### 讀取wav與建立text
+
+```python
     def get_wav_files(wav_path):
         wav_files=[]
         for (dirpath, dirnames, filenames) in os.walk(wav_path):
@@ -59,8 +68,11 @@
     tran_path='D:\\Python\\ML\\HW3\\ML@NTUT-2021-Autumn-ASR\\train_txt\\'
     wav_files=get_wav_files(wav_path)
     tran_texts=get_train_texts(wav_files,tran_path)
-  
-### MFCC取樣  
+```
+
+#### MFCC取樣  
+
+```python
     def load_and_trim(path):
         audio, sr = librosa.load(path) #audio為取樣的訊號值  sr為取樣率
         energy = librosa.feature.rms(audio) #計算每幀的均方根值(RMS)
@@ -69,8 +81,11 @@
         audio = audio[indices[0]:indices[-1]] if indices.size else audio[0:0]
         
         return audio, sr
-  
-### 進行特徵抓取  
+```
+
+#### 進行特徵抓取  
+
+```python
     features = []
     for i in tqdm(range(len(wav_files))):
         path = wav_files[i]
@@ -78,12 +93,19 @@
         features.append(mfcc(audio, sr, numcep=mfcc_dim, nfft=551))
         # nfft : FFT大小
         # highfreq : 最高頻帶邊緣，將超出的雜訊移除，可自行新增
-#### Audio Signal  
+```
+
+##### Audio Signal  
+
 ![image](images/AudioSignal.png)  
-#### MFCC 
+
+##### MFCC
+
 ![image](images/MFCC.png)  
 
-### 標準化  
+#### 標準化  
+
+```python
     # 避免出現權重比例失衡 造成難以收斂
     samples = random.sample(features, 100)
     samples = np.vstack(samples)
@@ -94,8 +116,11 @@
     print(mfcc_std)
 
     features = [(feature - mfcc_mean) / (mfcc_std + 1e-14) for feature in features]
+```
 
-### TEXT Encoder  
+#### TEXT Encoder  
+
+```python
     #將TEXT進行編碼
     chars = {}
     for text in tran_texts:
@@ -108,8 +133,11 @@
 
     char2id = {c: i for i, c in enumerate(chars)}
     id2char = {i: c for i, c in enumerate(chars)}    
-  
-### Create training and testing(validation) dataset  
+```
+
+#### Create training and testing(validation) dataset  
+
+```python
     # training : validation = 9 : 1
     data_index = np.arange(len(wav_files))
     np.random.shuffle(data_index)
@@ -122,8 +150,11 @@
     Y_train = [tran_texts[i] for i in train_index]
     X_test = [features[i] for i in test_index]
     Y_test = [tran_texts[i] for i in test_index]
-  
-### Create generator 
+```
+
+#### Create generator
+
+```python
     # 進行分批訓練 以減少記憶體占用   
     # 設定batch_size大小 太大會造成OOM
     batch_size = 2
@@ -161,11 +192,13 @@
             outputs = {'ctc': np.zeros([batch_size])}
             
             yield (inputs, outputs)
-  
+```
 
-## 2.模型建構  
+### 2.模型建構  
 
-### Bulid the model  
+#### Bulid the model  
+
+```python
     epochs = 50 #訓練批次
     num_blocks = 3 #RNN的層數
     filters = 256 #輸出空間的維度
@@ -209,8 +242,11 @@
     h1 = activation(batchnorm(conv1d(h1, filters, 1, 1)), 'relu')
     Y_pred = activation(batchnorm(conv1d(h1, len(char2id) + 1, 1, 1)), 'softmax')
     sub_model = Model(inputs=X, outputs=Y_pred)
-  
-### 定義CTC loss  
+```
+
+#### 定義CTC loss  
+
+```python
     def calc_ctc_loss(args):
         y, yp, ypl, yl = args
         return K.ctc_batch_cost(y, yp, ypl, yl)
@@ -223,17 +259,22 @@
     # 設定checkpoint與lr_decay
     checkpointer = ModelCheckpoint(filepath='asr.h5', verbose=0, monitor='val_loss', save_best_only=True, mode='min')
     lr_decay = ReduceLROnPlateau(monitor='loss', factor=0.2, patience=1, min_lr=0.000)
-  
-### model Summary  
-[The model Summary](modelSummary.txt)  
-![image](images/summary.png)  
-    
-## 3.效果評估  
+```
 
-### 使用Loss 進行評估   
+#### model Summary  
+
+[The model Summary](modelSummary.txt)  
+
+![image](images/summary.png)  
+
+### 3.效果評估  
+
+#### 使用Loss 進行評估
+
 使用SGD，可以觀察到valid，會出現較大的震盪。  
 可觀察到valid的loss沒有下降太多，因為使用CTC會使input與output長度相等，導致預測結果會產生-1，以補足輸出長度，最後造成loss計算上的偏差。  
 
+```python
     train_loss = history.history['loss']
     valid_loss = history.history['val_loss']
     plt.plot(np.linspace(1, epochs, epochs), train_loss, label='train')
@@ -242,32 +283,41 @@
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.show()
- 
-![image](images/loss.png)  
- 
-  
-## 4.改進  
-    1. 加入highfreq 減少雜訊
-    2. 增加epoch到100
-    3. 增加RNN的layer與unit
-    4. 改用LAS或RNN-T
+```
 
-    
-## 5.成果  
+![image](images/loss.png)  
+
+### 4.改進
+
+1. 加入highfreq 減少雜訊
+2. 增加epoch到100
+3. 增加RNN的layer與unit
+4. 改用LAS或RNN-T
+
+### 5.成果  
   
-### 預測結果(50 epoch)  
+#### 預測結果(50 epoch)  
+
+```text
     True transcription:
     --  gua ma si kang khuan 
 
     Predicted transcription:
     -- gua ma si kang khuan 
-  
-### Kaggle Leaderboard
+```
+
+#### Kaggle Leaderboard
+
+```text
     Kaggle：Private Leaderboard (50/132)
-![image](images/Leaderboard.png) 
-  
-   
-## 6.參考資料
+```
+
+![image](images/Leaderboard.png)
+
+### 6.參考資料
+
 [CTC Example Github](https://github.com/philipperemy/tensorflow-ctc-speech-recognition)  
+
 [CTC Keras](https://keras.io/examples/audio/ctc_asr/)  
-[Speech Recognition--Hung-yi Lee](https://www.youtube.com/watch?v=AIKu43goh-8)  
+
+[Speech Recognition--Hung-yi Lee](https://www.youtube.com/watch?v=AIKu43goh-8)
